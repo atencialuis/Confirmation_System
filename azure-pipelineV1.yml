@@ -1,0 +1,66 @@
+
+trigger:
+- main  # la integracion de codigo en esta rama del repositorio dispara el pipeline
+
+pool:
+  vmImage: 'ubuntu-latest'  # Usamos una imagen de Ubuntu para el build
+
+variables:
+  awsRegion: 'us-east-1'  # Región del bucket S3 y recursos de CloudFormation
+  s3BucketName: 'my-lambda-code-bucket'  # Nombre del bucket S3
+  cloudFormationTemplatePath: 'template/IaCV1.yml'  # Ruta de la plantilla CloudFormation IaCV1.yml
+  stackName: 'SendConfirmationStack'  # Nombre del stack CloudFormation
+  artifactDirectory: $(Build.ArtifactStagingDirectory)  # Directorio de staging de artefactos
+
+jobs:
+- job: BuildAndDeploy
+  steps:
+  # 1. Este paso permite a las tareas posteriores usar los archivos del repositorio como archivos locales
+  - checkout: self 
+
+  # 2. Se comprimen los archivos que contienen el codigo de las lambdas
+  - task: ArchiveFiles@2
+    inputs:
+      rootFolderOrFile: $(Build.SourcesDirectory)/lambda-email.py
+      includeRootFolder: false
+      archiveFile: $(artifactDirectory)/lambda-email.zip
+      overwrite: true
+
+  - task: ArchiveFiles@2
+    inputs:
+      rootFolderOrFile: $(Build.SourcesDirectory)/lambda-confirmaciones.py
+      includeRootFolder: false
+      archiveFile: $(artifactDirectory)/lambda-confirmaciones.zip
+      overwrite: true
+  
+  # 3. Instalar AWS CLI
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+      addToPath: true
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install awscli  
+    displayName: 'Instalar AWS CLI'
+
+  # 4. Configurar credenciales de AWS, Estas claves deben ser configuradas dentro de un service connection en Azure DevOps y estas variables definidas en el library asociado al repositorio
+  - script: |
+      aws configure set aws_access_key_id $(awsAccessKeyId) 
+      aws configure set aws_secret_access_key $(awsSecretAccessKey)
+      aws configure set default.region $(awsRegion)
+    displayName: 'Configurar AWS CLI'
+
+  # 5. Subir los archivos comprimidos al bucket de S3 asociado con las lambdas ya que estos contienen el codigo de dichas lambdas.
+  - script: |
+      aws s3 cp $(artifactDirectory) s3://$(s3BucketName)/ --recursive
+    displayName: 'Subir todos los archivos a S3'
+
+  # 6. Desplegar recursos con CloudFormation
+  - script: |
+      aws cloudformation deploy \
+        --template-file $(cloudFormationTemplatePath) \
+        --stack-name $(stackName) \
+        --capabilities CAPABILITY_NAMED_IAM \
+        --region $(awsRegion)
+    displayName: 'Desplegar stack de CloudFormation'

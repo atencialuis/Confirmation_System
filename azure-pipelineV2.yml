@@ -1,0 +1,43 @@
+trigger:
+- main 
+
+pool:
+  vmImage: 'ubuntu-latest' 
+
+variables:
+  awsRegion: 'us-east-1'  # Región de los recursos de CloudFormation
+  cloudFormationTemplatePath: 'template/IaCV2.yml'  # Ruta de la plantilla CloudFormation IaCV2.yml
+  stackName: 'SendconfimationStack'  # Nombre del stack CloudFormation
+
+jobs:
+- job: DeployResources
+  steps:
+  # 1. Clonar el repositorio
+  - checkout: self  # Clona el código del repositorio
+
+  # 2. Instalar AWS CLI
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+      addToPath: true
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install awscli  
+    displayName: 'Instalar AWS CLI'
+
+  # 3. Configurar credenciales de AWS
+  - script: |
+      aws configure set aws_access_key_id $(awsAccessKeyId)
+      aws configure set aws_secret_access_key $(awsSecretAccessKey)
+      aws configure set default.region $(awsRegion)
+    displayName: 'Configurar AWS CLI'
+
+  # 4. Desplegar recursos con CloudFormation
+  - script: |
+      aws cloudformation deploy \
+        --template-file $(cloudFormationTemplatePath) \
+        --stack-name $(stackName) \
+        --capabilities CAPABILITY_NAMED_IAM \
+        --region $(awsRegion)
+    displayName: 'Desplegar stack de CloudFormation'

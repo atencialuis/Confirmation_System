@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template para envio de confirmaciones de transacciones.
+
+Resources:
+  # Tabla DynamoDB con Streams
+  DynamoDBTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      TableName: "MyDynamoDBTable"
+      AttributeDefinitions:
+        - AttributeName: "ID"
+          AttributeType: "S"
+        - AttributeName: "transaccion"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "ID"
+          KeyType: "HASH"
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES  
+
+  # EventBridge Bus
+  EventBus:
+    Type: "AWS::Events::EventBus"
+    Properties:
+      Name: "MyEventBus"
+
+  # EventBridge API Destination
+  APIDestination:
+    Type: "AWS::Events::ApiDestination"
+    Properties:
+      Name: "MyAPIDestination"
+      ConnectionArn: !GetAtt APIDestinationConnection.Arn
+      InvocationEndpoint: "https://plataforma.com/webhook"  # Reemplaza con la URL del webhook del cliente
+      HttpMethod: POST  # Método HTTP
+      InvocationRateLimitPerSecond: 10  # Límite de invocaciones por segundo
+
+  # EventBridge Connection
+  APIDestinationConnection:
+    Type: "AWS::Events::Connection"
+    Properties:
+      Name: "MyAPIDestinationConnection"
+      AuthorizationType: "BASIC"  # Cambia según las necesidades del webhook
+      AuthParameters:
+        BasicAuthParameters:
+          Username: "myUsername"  # Reemplaza con el nombre de usuario
+          Password: "myPassword"  # Reemplaza con la contraseña (se debe configurar Secrets Manager para mayor seguridad)
+
+  # Regla de EventBridge
+  EventRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Name: "MyEventRule"
+      EventBusName: !Ref EventBus
+      EventSource: !GetAtt DynamoDBTable.StreamArn  # Asocia los Streams de DynamoDB como fuente de eventos
+      EventPattern:
+        source:
+          - "aws.dynamodb"
+        detail:
+          eventName:
+            - "INSERT"  # Procesa eventos de inserción; es decir que se activa siempre que llega nueva informacion a la base de datos
+      Targets:
+        - Id: "MyWebhookTarget"
+          Arn: !GetAtt APIDestination.Arn
+
+Outputs:
+  DynamoDBTableName:
+    Value: !Ref DynamoDBTable
+    Description: Nombre de la tabla DynamoDB
+
+  DynamoDBStreamArn:
+    Value: !GetAtt DynamoDBTable.StreamArn
+    Description: ARN del Stream de la tabla DynamoDB
+
+  EventBusName:
+    Value: !Ref EventBus
+    Description: Nombre del EventBus
+
+  WebhookDestination:
+    Value: "https://plataforma.com/webhook"
+    Description: Webhook de cliente configurado como destino

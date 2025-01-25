@@ -1,0 +1,103 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  LambdaEmail:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: LambdaEmail
+      Handler: lambda_email.lambda_handler  # Asumiendo que el archivo es lambda_email.py
+      Role:
+        Fn::GetAtt: [LambdaExecutionRole, Arn]
+      Code:
+        S3Bucket: my-lambda-code-bucket
+        S3Key: lambda-email.zip
+      Runtime: python3.8  # Usando Python 3.8
+      MemorySize: 128
+      Timeout: 60
+
+  LambdaConfirmaciones:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: LambdaConfirmaciones
+      Handler: lambda_confirmaciones.lambda_handler  # Asumiendo que el archivo es lambda_confirmaciones.py
+      Role:
+        Fn::GetAtt: [LambdaExecutionRole, Arn]
+      Code:
+        S3Bucket: my-lambda-code-bucket
+        S3Key: lambda-confirmaciones.zip
+      Runtime: python3.8  # Usando Python 3.8
+      MemorySize: 128
+      Timeout: 60
+
+  DynamoDBTable:
+  # Tabla DynamoDB con Streams
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      TableName: "MyDynamoDBTable"
+      AttributeDefinitions:
+        - AttributeName: "ID"
+          AttributeType: "S"
+        - AttributeName: "transaccion"
+          AttributeType: "S"
+        - AttributeName: "email"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "ID"
+          KeyType: "HASH"
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES 
+
+  SESConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: MySESConfigurationSet
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: LambdaBasicExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !GetAtt DynamoDBTable.Arn
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: "*"
+
+Outputs:
+  LambdaEmailName:
+    Value: !Ref LambdaEmail
+    Description: "Lambda Email Function Name"
+  LambdaConfirmacionesName:
+    Value: !Ref LambdaConfirmaciones
+    Description: "Lambda Confirmaciones Function Name"
+  DynamoDBTableName:
+    Value: !Ref DynamoDBTable
+    Description: "DynamoDB Table Name"
+  SESConfigurationSetName:
+    Value: !Ref SESConfigurationSet
+    Description: "SES Configuration Set Name"
